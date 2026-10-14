@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartHome Hub - ESP32 Controller & Condition Filter</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(79, 70, 229, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.8);
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { filter: drop-shadow(0 0 14px rgba(234, 179, 8, 0.85)); }
+      50% { filter: drop-shadow(0 0 26px rgba(250, 204, 21, 1)); }
+    }
+    .bulb-glow {
+      animation: glowPulse 2.5s infinite ease-in-out;
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white pb-12">
+  
+  <!-- Navigation Header -->
+  <header class="border-b border-slate-800/80 bg-slate-900/60 sticky top-0 z-50 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 shadow-lg shadow-indigo-500/25">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-wide text-white">SmartHome Hub</h1>
+          <p class="text-xs text-slate-400">ESP32 Flash Memory &bull; Condition Automation</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Emergency Kill Switch Button -->
+        <button id="killSwitchBtn" class="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-500/40 transition active:scale-95 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+          </svg>
+          <span id="killBtnText">KILL SWITCH</span>
+        </button>
+
+        <div id="connBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="connText">Connecting...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Emergency Kill Switch Banner -->
+  <div id="killBanner" class="hidden bg-rose-950 text-rose-200 border-b-2 border-rose-500 px-4 py-3.5 shadow-2xl animate-pulse">
+    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <svg class="w-6 h-6 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <div>
+          <h4 class="font-extrabold text-sm sm:text-base text-white">EMERGENCY KILL SWITCH ACTIVATED!</h4>
+          <p class="text-xs text-rose-300">All relay power has been cut by ESP32 firmware interlock.</p>
+        </div>
+      </div>
+      <button id="resetKillBtn" class="px-4 py-2 rounded-full text-xs font-bold bg-rose-500 hover:bg-rose-400 text-white shadow-lg active:scale-95 transition shrink-0">
+        RESET POWER
+      </button>
+    </div>
+  </div>
+
+  <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+
+    <!-- Configuration Strip: Broker & Topic Settings -->
+    <section class="glass-card rounded-2xl p-5 shadow-xl border border-slate-800">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-indigo-400 font-mono text-sm font-bold">#</div>
+          <div>
+            <h2 class="text-sm font-semibold text-slate-200">MQTT Base Topic</h2>
+            <p class="text-xs text-slate-400">Must match topic prefix configured in your ESP32 code</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 sm:w-64">
+            <input 
+              type="text" 
+              id="topicInput" 
+              value="myhome123" 
+              class="w-full bg-slate-900/90 border border-slate-700 text-sm font-mono rounded-lg px-3.5 py-2 text-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              placeholder="e.g. myhome123"
+            >
+          </div>
+          <button 
+            id="updateTopicBtn" 
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-xs font-semibold rounded-lg text-white transition shadow-sm"
+          >
+            Update Topic
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUTOMATION RULE & CONDITION CONFIGURATOR -->
+    <section class="glass-card rounded-3xl p-6 border border-slate-800 shadow-xl space-y-5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          <h3 class="text-sm font-semibold tracking-wide uppercase text-slate-200">Active Condition Selector</h3>
+        </div>
+        <span class="text-xs text-indigo-400 font-mono">Persists in ESP32 Flash (Preferences.h)</span>
+      </div>
+
+      <!-- Condition Selector Buttons -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button id="condTempBtn" class="p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition text-left active:scale-95">
+          <div class="text-xs font-bold text-white mb-0.5">Temp Only</div>
+          <div class="text-[10px] text-slate-400">Fan trigger only</div>
+        </button>
+        <button id="condGasBtn" class="p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition text-left active:scale-95">
+          <div class="text-xs font-bold text-white mb-0.5">Gas Only</div>
+          <div class="text-[10px] text-slate-400">Exhaust trigger only</div>
+        </button>
+        <button id="condBothBtn" class="p-3 rounded-xl bg-indigo-600 text-white font-bold border border-indigo-400 transition text-left active:scale-95">
+          <div class="text-xs font-bold mb-0.5">Both Active</div>
+          <div class="text-[10px] text-indigo-200">Temp + Gas triggers</div>
+        </button>
+        <button id="condOffBtn" class="p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition text-left active:scale-95">
+          <div class="text-xs font-bold text-white mb-0.5">Disabled</div>
+          <div class="text-[10px] text-slate-400">Direct manual only</div>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+        <!-- Fan Trigger Temp -->
+        <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800">
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Fan ON Temp Threshold (°C)</label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="cfgTempInput" step="0.5" value="29.0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono text-amber-400 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <button id="saveTempBtn" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition active:scale-95">Set</button>
+          </div>
+          <span class="text-[10px] text-slate-500 mt-1 block">Turns ON Relay 1 when exceeded</span>
+        </div>
+
+        <!-- Hysteresis Window -->
+        <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800">
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Temp Hysteresis Buffer (°C)</label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="cfgHystInput" step="0.1" value="1.0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono text-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <button id="saveHystBtn" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition active:scale-95">Set</button>
+          </div>
+          <span class="text-[10px] text-slate-500 mt-1 block">Turns Fan OFF at (Threshold - Buffer)</span>
+        </div>
+
+        <!-- Gas Hazard Trigger -->
+        <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800">
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Gas Hazard Limit (MQ-135)</label>
+          <div class="flex items-center gap-2">
+            <input type="number" id="cfgGasInput" step="50" value="1800" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono text-emerald-400 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <button id="saveGasBtn" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white transition active:scale-95">Set</button>
+          </div>
+          <span class="text-[10px] text-slate-500 mt-1 block">Triggers Exhaust & Emergency Alert</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIVE SENSOR TELEMETRY METRICS SECTION -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold tracking-wide uppercase text-slate-300 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+          Environmental Telemetry (DHT11 & MQ-135)
+        </h3>
+        <span class="text-xs text-slate-400 font-mono" id="lastTelemetryTime">Awaiting telemetry...</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Temperature Card -->
+        <div class="glass-card rounded-3xl p-5 border border-slate-800 shadow-lg relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wider font-semibold text-slate-400">Temperature</p>
+                <h4 class="text-xs text-slate-500 font-mono">Topic: /temp</h4>
+              </div>
+            </div>
+            <button id="tempUnitBtn" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition">°C</button>
+          </div>
+
+          <div class="mt-5 flex items-baseline justify-between">
+            <div>
+              <span id="tempValue" class="text-4xl font-extrabold tracking-tight text-white font-mono">--.-</span>
+              <span id="tempUnitLabel" class="text-xl font-medium text-cyan-400 ml-1">°C</span>
+            </div>
+            <span id="tempBadge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Normal</span>
+          </div>
+
+          <div class="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="tempBar" class="bg-gradient-to-r from-cyan-400 to-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: 45%;"></div>
+          </div>
+        </div>
+
+        <!-- Humidity Card -->
+        <div class="glass-card rounded-3xl p-5 border border-slate-800 shadow-lg relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                </svg>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wider font-semibold text-slate-400">Humidity</p>
+                <h4 class="text-xs text-slate-500 font-mono">Topic: /humidity</h4>
+              </div>
+            </div>
+            <span class="text-xs text-slate-400 font-mono">DHT11</span>
+          </div>
+
+          <div class="mt-5 flex items-baseline justify-between">
+            <div>
+              <span id="humValue" class="text-4xl font-extrabold tracking-tight text-white font-mono">--.-</span>
+              <span class="text-xl font-medium text-blue-400 ml-1">%</span>
+            </div>
+            <span id="humBadge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Comfortable</span>
+          </div>
+
+          <div class="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="humBar" class="bg-gradient-to-r from-blue-400 to-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: 50%;"></div>
+          </div>
+        </div>
+
+        <!-- Gas / Air Quality Card -->
+        <div class="glass-card rounded-3xl p-5 border border-slate-800 shadow-lg relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div id="gasIconBox" class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/>
+                </svg>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wider font-semibold text-slate-400">Air Quality / Gas</p>
+                <h4 class="text-xs text-slate-500 font-mono">Topic: /gas (GPIO 34)</h4>
+              </div>
+            </div>
+            <span class="text-xs text-slate-400 font-mono">MQ-135 ADC</span>
+          </div>
+
+          <div class="mt-5 flex items-baseline justify-between">
+            <div>
+              <span id="gasValue" class="text-4xl font-extrabold tracking-tight text-white font-mono">----</span>
+              <span class="text-xs font-mono text-slate-400 ml-1">/ 4095</span>
+            </div>
+            <span id="gasBadge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Clean Air</span>
+          </div>
+
+          <div class="mt-4 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="gasBar" class="bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 h-1.5 rounded-full transition-all duration-500" style="width: 10%;"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- RELAY CONTROL CARDS -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <!-- Relay 1 Control Card (Fan) -->
+      <section id="cardRelay1" class="glass-card rounded-3xl p-6 transition duration-300 relative overflow-hidden group">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div id="iconBox1" class="w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-800 text-slate-400 transition duration-300">
+              <svg id="bulbIcon1" class="w-7 h-7 transition-all duration-300" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm-2 18h4c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1zm-1-3v-1h6v1H9z"/>
+              </svg>
+            </div>
+            <div>
+              <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">GPIO 26 &bull; Channel 1 (Fan)</span>
+              <h3 class="text-xl font-bold text-white">Appliance 1</h3>
+            </div>
+          </div>
+
+          <div id="statusPill1" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-400 transition">
+            OFF
+          </div>
+        </div>
+
+        <div class="mt-8 flex flex-col items-center justify-center py-4">
+          <button 
+            id="toggleRelay1Btn" 
+            class="relative inline-flex h-16 w-32 items-center rounded-full bg-slate-800 transition-colors focus:outline-none focus:ring-4 focus:ring-indigo-500/20 shadow-inner"
+            aria-label="Toggle Relay 1"
+          >
+            <span id="knob1" class="inline-block h-12 w-12 transform rounded-full bg-slate-400 transition-transform translate-x-2 shadow-md flex items-center justify-center">
+              <svg class="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 3v9"/>
+              </svg>
+            </span>
+          </button>
+          <span class="mt-3 text-xs text-slate-400 tracking-wide font-medium">Click to toggle appliance</span>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs">
+          <span class="text-slate-400">Payload: <code class="text-indigo-400 font-mono" id="payloadHint1">"0"</code></span>
+          <button id="pulse1Btn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium active:scale-95 transition">
+            1s Pulse
+          </button>
+        </div>
+      </section>
+
+      <!-- Relay 2 Control Card (Exhaust) -->
+      <section id="cardRelay2" class="glass-card rounded-3xl p-6 transition duration-300 relative overflow-hidden group">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div id="iconBox2" class="w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-800 text-slate-400 transition duration-300">
+              <svg id="bulbIcon2" class="w-7 h-7 transition-all duration-300" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm-2 18h4c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1zm-1-3v-1h6v1H9z"/>
+              </svg>
+            </div>
+            <div>
+              <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">GPIO 27 &bull; Channel 2 (Exhaust)</span>
+              <h3 class="text-xl font-bold text-white">Appliance 2</h3>
+            </div>
+          </div>
+
+          <div id="statusPill2" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-400 transition">
+            OFF
+          </div>
+        </div>
+
+        <div class="mt-8 flex flex-col items-center justify-center py-4">
+          <button 
+            id="toggleRelay2Btn" 
+            class="relative inline-flex h-16 w-32 items-center rounded-full bg-slate-800 transition-colors focus:outline-none focus:ring-4 focus:ring-indigo-500/20 shadow-inner"
+            aria-label="Toggle Relay 2"
+          >
+            <span id="knob2" class="inline-block h-12 w-12 transform rounded-full bg-slate-400 transition-transform translate-x-2 shadow-md flex items-center justify-center">
+              <svg class="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 3v9"/>
+              </svg>
+            </span>
+          </button>
+          <span class="mt-3 text-xs text-slate-400 tracking-wide font-medium">Click to toggle appliance</span>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs">
+          <span class="text-slate-400">Payload: <code class="text-indigo-400 font-mono" id="payloadHint2">"0"</code></span>
+          <button id="pulse2Btn" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium active:scale-95 transition">
+            1s Pulse
+          </button>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <script>
+    let relay1State = false;
+    let relay2State = false;
+    let killSwitchActive = false;
+    let activeCondition = 3;
+    let baseTopic = "myhome123";
+    let client = null;
+    let isConnected = false;
+
+    const connBadge = document.getElementById('connBadge');
+    const connDot = document.getElementById('connDot');
+    const connText = document.getElementById('connText');
+    const killSwitchBtn = document.getElementById('killSwitchBtn');
+    const killBtnText = document.getElementById('killBtnText');
+    const killBanner = document.getElementById('killBanner');
+    const resetKillBtn = document.getElementById('resetKillBtn');
+    
+    const topicInput = document.getElementById('topicInput');
+    const updateTopicBtn = document.getElementById('updateTopicBtn');
+
+    // Condition Selector buttons
+    const condTempBtn = document.getElementById('condTempBtn');
+    const condGasBtn = document.getElementById('condGasBtn');
+    const condBothBtn = document.getElementById('condBothBtn');
+    const condOffBtn = document.getElementById('condOffBtn');
+
+    // Rule Config Inputs
+    const cfgTempInput = document.getElementById('cfgTempInput');
+    const cfgHystInput = document.getElementById('cfgHystInput');
+    const cfgGasInput  = document.getElementById('cfgGasInput');
+    const saveTempBtn  = document.getElementById('saveTempBtn');
+    const saveHystBtn  = document.getElementById('saveHystBtn');
+    const saveGasBtn   = document.getElementById('saveGasBtn');
+
+    // Telemetry DOM
+    const tempValue = document.getElementById('tempValue');
+    const tempUnitLabel = document.getElementById('tempUnitLabel');
+    const tempUnitBtn = document.getElementById('tempUnitBtn');
+    const tempBar = document.getElementById('tempBar');
+    const humValue = document.getElementById('humValue');
+    const humBar = document.getElementById('humBar');
+    const gasValue = document.getElementById('gasValue');
+    const gasBar = document.getElementById('gasBar');
+    const lastTelemetryTime = document.getElementById('lastTelemetryTime');
+
+    // Relay DOM
+    const toggleRelay1Btn = document.getElementById('toggleRelay1Btn');
+    const toggleRelay2Btn = document.getElementById('toggleRelay2Btn');
+    const knob1 = document.getElementById('knob1');
+    const knob2 = document.getElementById('knob2');
+    const statusPill1 = document.getElementById('statusPill1');
+    const statusPill2 = document.getElementById('statusPill2');
+    const iconBox1 = document.getElementById('iconBox1');
+    const iconBox2 = document.getElementById('iconBox2');
+    const bulbIcon1 = document.getElementById('bulbIcon1');
+    const bulbIcon2 = document.getElementById('bulbIcon2');
+    const payloadHint1 = document.getElementById('payloadHint1');
+    const payloadHint2 = document.getElementById('payloadHint2');
+    const pulse1Btn = document.getElementById('pulse1Btn');
+    const pulse2Btn = document.getElementById('pulse2Btn');
+
+    let isFahrenheit = false;
+    let temperatureVal = 0.0;
+    let humidityVal = 0.0;
+    let gasRawVal = 0;
+
+    function updateConditionUI(cond) {
+      activeCondition = cond;
+      const btns = [
+        { el: condOffBtn, val: 0 },
+        { el: condTempBtn, val: 1 },
+        { el: condGasBtn, val: 2 },
+        { el: condBothBtn, val: 3 },
+      ];
+      btns.forEach(({ el, val }) => {
+        if (val === cond) {
+          el.className = "p-3 rounded-xl bg-indigo-600 text-white font-bold border border-indigo-400 transition text-left active:scale-95 shadow-md";
+        } else {
+          el.className = "p-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition text-left active:scale-95";
+        }
+      });
+    }
+
+    function updateRelayUI(relayNum, state) {
+      if (relayNum === 1) {
+        relay1State = state;
+        payloadHint1.textContent = `"${state ? '1' : '0'}"`;
+        if (state) {
+          toggleRelay1Btn.classList.remove('bg-slate-800');
+          toggleRelay1Btn.classList.add('bg-indigo-600');
+          knob1.classList.remove('translate-x-2', 'bg-slate-400');
+          knob1.classList.add('translate-x-[4.5rem]', 'bg-white');
+          statusPill1.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          statusPill1.textContent = 'ON';
+          iconBox1.className = 'w-12 h-12 rounded-2xl flex items-center justify-center bg-amber-500/20 text-yellow-400 bulb-glow transition duration-300';
+          bulbIcon1.classList.add('text-yellow-400');
+        } else {
+          toggleRelay1Btn.classList.add('bg-slate-800');
+          toggleRelay1Btn.classList.remove('bg-indigo-600');
+          knob1.classList.add('translate-x-2', 'bg-slate-400');
+          knob1.classList.remove('translate-x-[4.5rem]', 'bg-white');
+          statusPill1.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-400';
+          statusPill1.textContent = 'OFF';
+          iconBox1.className = 'w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-800 text-slate-400 transition duration-300';
+          bulbIcon1.classList.remove('text-yellow-400');
+        }
+      } else if (relayNum === 2) {
+        relay2State = state;
+        payloadHint2.textContent = `"${state ? '1' : '0'}"`;
+        if (state) {
+          toggleRelay2Btn.classList.remove('bg-slate-800');
+          toggleRelay2Btn.classList.add('bg-indigo-600');
+          knob2.classList.remove('translate-x-2', 'bg-slate-400');
+          knob2.classList.add('translate-x-[4.5rem]', 'bg-white');
+          statusPill2.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          statusPill2.textContent = 'ON';
+          iconBox2.className = 'w-12 h-12 rounded-2xl flex items-center justify-center bg-amber-500/20 text-yellow-400 bulb-glow transition duration-300';
+          bulbIcon2.classList.add('text-yellow-400');
+        } else {
+          toggleRelay2Btn.classList.add('bg-slate-800');
+          toggleRelay2Btn.classList.remove('bg-indigo-600');
+          knob2.classList.add('translate-x-2', 'bg-slate-400');
+          knob2.classList.remove('translate-x-[4.5rem]', 'bg-white');
+          statusPill2.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800 text-slate-400';
+          statusPill2.textContent = 'OFF';
+          iconBox2.className = 'w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-800 text-slate-400 transition duration-300';
+          bulbIcon2.classList.remove('text-yellow-400');
+        }
+      }
+    }
+
+    function setupMqtt() {
+      const brokerHost = 'broker.hivemq.com';
+      const brokerPort = 8884;
+      const clientId = 'SmartHomeWeb_' + Math.random().toString(16).substring(2, 8);
+
+      client = new Paho.MQTT.Client(brokerHost, Number(brokerPort), '/mqtt', clientId);
+
+      client.onConnectionLost = function () {
+        isConnected = false;
+        connBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20';
+        connDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400';
+        connText.textContent = 'Disconnected';
+      };
+
+      client.onMessageArrived = function (message) {
+        const topic = message.destinationName;
+        const payload = message.payloadString.trim();
+        lastTelemetryTime.textContent = 'Last update: ' + new Date().toLocaleTimeString();
+
+        if (topic === `${baseTopic}/relay1`) {
+          updateRelayUI(1, payload === '1' || payload.toUpperCase() === 'ON');
+        } else if (topic === `${baseTopic}/relay2`) {
+          updateRelayUI(2, payload === '1' || payload.toUpperCase() === 'ON');
+        } else if (topic === `${baseTopic}/temp`) {
+          temperatureVal = parseFloat(payload);
+          tempValue.textContent = isFahrenheit ? (temperatureVal * 9/5 + 32).toFixed(1) : temperatureVal.toFixed(1);
+          tempBar.style.width = `${Math.min(Math.max((temperatureVal / 50) * 100, 5), 100)}%`;
+        } else if (topic === `${baseTopic}/humidity`) {
+          humidityVal = parseFloat(payload);
+          humValue.textContent = humidityVal.toFixed(1);
+          humBar.style.width = `${Math.min(Math.max(humidityVal, 5), 100)}%`;
+        } else if (topic === `${baseTopic}/gas`) {
+          gasRawVal = parseInt(payload, 10);
+          gasValue.textContent = gasRawVal;
+          gasBar.style.width = `${Math.min(Math.max((gasRawVal / 4095) * 100, 4), 100)}%`;
+        } else if (topic === `${baseTopic}/kill`) {
+          killSwitchActive = (payload === '1' || payload.toUpperCase() === 'KILL');
+          killBanner.classList.toggle('hidden', !killSwitchActive);
+          killBtnText.textContent = killSwitchActive ? 'RESET KILL' : 'KILL SWITCH';
+          killSwitchBtn.classList.toggle('bg-rose-500', killSwitchActive);
+          killSwitchBtn.classList.toggle('text-white', killSwitchActive);
+        } else if (topic === `${baseTopic}/config/condition`) {
+          const c = parseInt(payload, 10);
+          if (!isNaN(c)) updateConditionUI(c);
+        } else if (topic === `${baseTopic}/config/temp_thresh`) {
+          cfgTempInput.value = parseFloat(payload);
+        } else if (topic === `${baseTopic}/config/hysteresis`) {
+          cfgHystInput.value = parseFloat(payload);
+        } else if (topic === `${baseTopic}/config/gas_thresh`) {
+          cfgGasInput.value = parseInt(payload, 10);
+        }
+      };
+
+      client.connect({
+        useSSL: true,
+        timeout: 5,
+        onSuccess: function () {
+          isConnected = true;
+          connBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          connDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+          connText.textContent = 'Broker Connected';
+          subscribeTopics();
+        },
+        onFailure: function () {
+          isConnected = false;
+        }
+      });
+    }
+
+    function subscribeTopics() {
+      if (!isConnected || !client) return;
+      const topics = [
+        `${baseTopic}/relay1`,
+        `${baseTopic}/relay2`,
+        `${baseTopic}/temp`,
+        `${baseTopic}/humidity`,
+        `${baseTopic}/gas`,
+        `${baseTopic}/alert`,
+        `${baseTopic}/kill`,
+        `${baseTopic}/config/condition`,
+        `${baseTopic}/config/temp_thresh`,
+        `${baseTopic}/config/gas_thresh`,
+        `${baseTopic}/config/hysteresis`
+      ];
+      topics.forEach(t => client.subscribe(t));
+    }
+
+    function publishConfig(subtopic, value) {
+      if (!isConnected || !client) return;
+      const topic = `${baseTopic}/config/${subtopic}`;
+      const message = new Paho.MQTT.Message(String(value));
+      message.destinationName = topic;
+      message.retained = true;
+      client.send(message);
+    }
+
+    function publishRelay(num, state) {
+      if (!isConnected || !client || killSwitchActive) return;
+      const topic = `${baseTopic}/relay${num}`;
+      const msg = new Paho.MQTT.Message(state ? "1" : "0");
+      msg.destinationName = topic;
+      msg.retained = true;
+      client.send(msg);
+    }
+
+    condTempBtn.addEventListener('click', () => {
+      publishConfig('condition', 1);
+      updateConditionUI(1);
+    });
+    condGasBtn.addEventListener('click', () => {
+      publishConfig('condition', 2);
+      updateConditionUI(2);
+    });
+    condBothBtn.addEventListener('click', () => {
+      publishConfig('condition', 3);
+      updateConditionUI(3);
+    });
+    condOffBtn.addEventListener('click', () => {
+      publishConfig('condition', 0);
+      updateConditionUI(0);
+    });
+
+    saveTempBtn.addEventListener('click', () => publishConfig('temp_thresh', cfgTempInput.value));
+    saveHystBtn.addEventListener('click', () => publishConfig('hysteresis', cfgHystInput.value));
+    saveGasBtn.addEventListener('click', () => publishConfig('gas_thresh', cfgGasInput.value));
+
+    toggleRelay1Btn.addEventListener('click', () => publishRelay(1, !relay1State));
+    toggleRelay2Btn.addEventListener('click', () => publishRelay(2, !relay2State));
+    pulse1Btn.addEventListener('click', () => {
+      publishRelay(1, true);
+      setTimeout(() => publishRelay(1, false), 1000);
+    });
+    pulse2Btn.addEventListener('click', () => {
+      publishRelay(2, true);
+      setTimeout(() => publishRelay(2, false), 1000);
+    });
+
+    killSwitchBtn.addEventListener('click', () => {
+      if (!isConnected || !client) return;
+      const target = !killSwitchActive ? "1" : "0";
+      const msg = new Paho.MQTT.Message(target);
+      msg.destinationName = `${baseTopic}/kill`;
+      msg.retained = true;
+      client.send(msg);
+    });
+
+    resetKillBtn.addEventListener('click', () => {
+      if (!isConnected || !client) return;
+      const msg = new Paho.MQTT.Message("0");
+      msg.destinationName = `${baseTopic}/kill`;
+      msg.retained = true;
+      client.send(msg);
+    });
+
+    updateTopicBtn.addEventListener('click', () => {
+      const val = topicInput.value.trim();
+      if (!val) return;
+      baseTopic = val;
+      subscribeTopics();
+    });
+
+    window.addEventListener('load', () => setupMqtt());
+  </script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#141218" />
+    <meta name="description" content="ESP32 Dual Relay Controller & Environmental Telemetry PWA with Material Design 3" />
+    
+    <!-- Mobile Web App & iOS Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SmartHome" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- PWA Manifest & Icons -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
+
+    <title>SmartHome Hub &bull; Material 3 Controller</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Roboto', 'sans-serif'],
+              mono: ['Roboto Mono', 'monospace'],
+            },
+            colors: {
+              m3: {
+                primary: '#D0BCFF',
+                onPrimary: '#381E72',
+                primaryContainer: '#4F378B',
+                onPrimaryContainer: '#EADDFF',
+                secondary: '#CCC2DC',
+                onSecondary: '#332D41',
+                secondaryContainer: '#4A4458',
+                onSecondaryContainer: '#E8DEF8',
+                tertiary: '#EFB8C8',
+                onTertiary: '#492532',
+                tertiaryContainer: '#633B48',
+                onTertiaryContainer: '#FFD8E4',
+                error: '#F2B8B5',
+                onError: '#601410',
+                errorContainer: '#8C1D18',
+                onErrorContainer: '#F9DEDC',
+                surface: '#141218',
+                onSurface: '#E6E0E9',
+                surfaceVariant: '#49454F',
+                onSurfaceVariant: '#CAC4D0',
+                outline: '#938F99',
+                outlineVariant: '#49454F',
+                surfaceContainerLowest: '#0F0D13',
+                surfaceContainerLow: '#1D1B20',
+                surfaceContainer: '#211F26',
+                surfaceContainerHigh: '#2B2930',
+                surfaceContainerHighest: '#36343B',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Google Fonts: Roboto & Roboto Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Material Symbols Outlined -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .material-symbols-outlined.fill {
+        font-variation-settings: 'FILL' 1;
+      }
+      /* Prevent overscroll bounce and support safe-area notch */
+      body {
+        overscroll-behavior-y: contain;
+        -webkit-tap-highlight-color: transparent;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
+      }
+    </style>
+  </head>
+  <body class="bg-m3-surface text-m3-onSurface antialiased min-h-screen selection:bg-m3-primary selection:text-m3-onPrimary">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Register Service Worker for PWA -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => {
+              console.log('PWA ServiceWorker registered with scope:', reg.scope);
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                if (installingWorker) {
+                  installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      console.log('New PWA version available.');
+                    }
+                  };
+                }
+              };
+            })
+            .catch((err) => console.log('PWA ServiceWorker registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>

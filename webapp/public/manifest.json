@@ -1,0 +1,52 @@
+{
+  "name": "SmartHome Hub & Controller",
+  "short_name": "SmartHome",
+  "description": "ESP32 Dual Relay Controller & Environmental Telemetry PWA with Material Design 3",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#141218",
+  "theme_color": "#141218",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["utilities", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Toggle Fan (Relay 1)",
+      "short_name": "Fan",
+      "description": "Toggle Appliance 1 (Relay 1)",
+      "url": "/?action=toggle1",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Toggle Exhaust (Relay 2)",
+      "short_name": "Exhaust",
+      "description": "Toggle Appliance 2 (Relay 2)",
+      "url": "/?action=toggle2",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Emergency Kill Switch",
+      "short_name": "Kill All",
+      "description": "Sever power to all appliances",
+      "url": "/?action=kill",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ]
+}

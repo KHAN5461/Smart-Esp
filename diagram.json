@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "author": "SmartESP",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 48, "left": -28.76, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "dht", "top": -124.5, "left": -120.6, "attrs": { "temperature": "24.5", "humidity": "50" } },
+    { "type": "wokwi-potentiometer", "id": "mq135", "top": -130.6, "left": 67, "attrs": { "label": "MQ135 Gas Sensor" } },
+    { "type": "wokwi-lcd1602", "id": "lcd", "top": 304, "left": -90.4, "attrs": { "pins": "i2c" } },
+    { "type": "wokwi-relay-module", "id": "relay1", "top": 19.4, "left": -220.8, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay2", "top": 125, "left": -220.8, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$if:serial-tx", "green", [] ],
+    [ "esp:RX", "$if:serial-rx", "green", [] ],
+    [ "esp:3V3", "dht:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.1", "dht:GND", "black", [ "v0" ] ],
+    [ "esp:4", "dht:SDA", "green", [ "v0" ] ],
+    [ "esp:3V3", "mq135:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.1", "mq135:GND", "black", [ "v0" ] ],
+    [ "esp:34", "mq135:SIG", "orange", [ "v0" ] ],
+    [ "esp:5V", "lcd:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.2", "lcd:GND", "black", [ "v0" ] ],
+    [ "esp:21", "lcd:SDA", "blue", [ "v0" ] ],
+    [ "esp:22", "lcd:SCL", "yellow", [ "v0" ] ],
+    [ "esp:5V", "relay1:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.2", "relay1:GND", "black", [ "v0" ] ],
+    [ "esp:26", "relay1:IN", "purple", [ "v0" ] ],
+    [ "esp:5V", "relay2:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.2", "relay2:GND", "black", [ "v0" ] ],
+    [ "esp:27", "relay2:IN", "magenta", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}
